@@ -1,0 +1,204 @@
+import numpy as np
+import matplotlib.pylab as plt
+
+
+# Finds the LSF and goodness of a fit using explicit algorithms
+# Let x be whatever is on the x axis, and y is whatever on the y axis
+
+def position_data_set():
+    """
+
+    :return: The velocity dataset
+
+    """
+
+    times = np.array([0., 0.5, 1., 1.5, 2., 2.5, 3., 3.5, 4., 4.5, 5., 5.5, 6., 6.5, 7., 7.5, 8., 8.5, 9., 9.5, 10.])
+    positions = np.array([13.4, 35.948, 58.09, 77.93, 98.46, 114.99, 130.81, 145.83, 156.84, 169.25, 175.76, 183.85, 188.94, 192.63, 195.81,
+                         194.69,  194.26, 190.63, 186.49, 181.35, 170.])
+    position_uncertainty = np.full((1, len(positions)), 3.)
+    return times, positions, position_uncertainty[0]
+
+
+t, h, h_uncertainty = position_data_set()
+# plt.plot(t, h, 'r.')
+# plt.show()
+
+
+def velocity_calculation_dataset(times, positions):
+    velocity = np.zeros((1, len(positions)))[0]
+    for i in range(len(positions)-1):
+        velocity[i] = (positions[i+1] - positions[i]) / (times[i+1] - times[i])
+    velocity_uncertainty_int = 6. * np.sqrt(2.)
+    velocity_uncertainty = np.full((1, len(velocity)-1), velocity_uncertainty_int)
+    return velocity[velocity != 0], velocity_uncertainty[0]
+
+
+v, v_uncertainty = velocity_calculation_dataset(t, h)
+# plt.plot(t[1:], v, 'g.')
+# plt.show()
+
+
+accel, accel_uncertainty = velocity_calculation_dataset(t, v)
+
+
+def heat_data_set():
+
+    """
+
+    :return: The heat capacity dataset
+
+    """
+
+    temperatures = np.array([0.1481, 0.2334, 0.2698, 0.2985, 0.3311, 0.3661, 0.3877, 0.4205, 0.4440, 0.5317, 0.5829, 0.6363, 0.6553,
+                            0.6960, 0.7148, 0.7736, 0.7944, 0.8159, 0.8750, 0.8888, 0.9058, 0.9845, 1.0211, 1.0868])
+    specific_heats = np.array([0.1029, 0.1630, 0.1887, 0.2087, 0.2306, 0.2556, 0.2713, 0.2949, 0.3121, 0.3758, 0.4143, 0.4554, 0.4678,
+                            0.4997, 0.5137, 0.5599, 0.5759, 0.5929, 0.6395, 0.6511, 0.6654, 0.7313, 0.7623, 0.8186])
+    temperatures_squared = temperatures**2
+    ct_values = specific_heats / temperatures
+    ct_uncertainty = 0.03 * ct_values
+    return temperatures, specific_heats, temperatures_squared, ct_values, ct_uncertainty
+
+
+T, C, T_squared, CdivT, CdivT_uncertainty = heat_data_set()
+# plt.plot(T_squared, CdivT, 'b.')
+# plt.show()
+
+
+def t_prime():
+    t_p = np.zeros(len(t)-1)
+    for i in range(1, len(t)-1):
+        t_p[i] = (t[i] + t[i-1]) / 2
+    return t_p
+
+
+t_pr = t_prime()
+
+
+def delta(x_value, y_true_error):
+    """
+
+    :param y_true_error: (array) error in true y values
+    :param x_value: (array) x values
+    :return: (int) delta value
+
+    """
+
+    x1 = 1 / y_true_error**2
+    x2 = x_value**2 / y_true_error**2
+    x3 = x_value / y_true_error**2
+    return sum(x1) * sum(x2) - (sum(x3))**2
+
+
+delta_velocity = delta(t[1:], v_uncertainty)
+delta_CT = delta(T_squared, CdivT_uncertainty)
+
+
+def a_coef(x_value, y_true_value, y_true_error):
+    x1 = x_value**2 / y_true_error**2
+    x2 = y_true_value / y_true_error**2
+    x3 = x_value / y_true_error**2
+    x4 = (x_value * y_true_value) / y_true_error**2
+    return (1/delta(x_value, y_true_error)) * (sum(x1)*sum(x2) - sum(x3)*sum(x4))
+
+
+def a_coef_error(x_value, y_true_error):
+    x1 = x_value**2 / y_true_error**2
+    return (1/delta(x_value, y_true_error)) * sum(x1)
+
+
+a_velocity = a_coef(t_pr, v, v_uncertainty)
+a_velocity_error = a_coef_error(t_pr, v_uncertainty)
+a_specificheat = a_coef(T_squared, CdivT, CdivT_uncertainty)
+a_specificheat_error = a_coef_error(T_squared, CdivT_uncertainty)
+
+
+def b_coef(x_value, y_true_value, y_true_error):
+    x1 = 1 / y_true_error**2
+    x2 = (x_value * y_true_value) / y_true_error**2
+    x3 = x_value / y_true_error**2
+    x4 = y_true_value / y_true_error**2
+    return (1/delta(x_value, y_true_error)) * (sum(x1)*sum(x2) - sum(x3)*sum(x4))
+
+
+def b_coef_error(x_value, y_true_error):
+    x1 = 1 / y_true_error**2
+    return (1/delta(x_value, y_true_error)) * sum(x1)
+
+
+b_velocity = b_coef(t_pr, v, v_uncertainty)
+b_velocity_error = b_coef_error(t_pr, v_uncertainty)
+b_specificheat = b_coef(T_squared, CdivT, CdivT_uncertainty)
+b_specificheat_error = b_coef_error(T_squared, CdivT_uncertainty)
+
+
+def predict(x, a, b):
+    return a + b * x
+
+
+predict_velocity = predict(t_pr, a_velocity, b_velocity)
+predict_CT = predict(T_squared, a_specificheat, b_specificheat)
+
+
+def LSF(y_true, y_predict, y_true_error):
+    """
+
+    :param y_true: (array) Actual y value
+    :param y_predict: (array) Predicted y value
+    :param y_true_error: (array) Error in true y value (sigma)
+    :return: Least Square Fit
+
+    """
+
+    x1 = (1 / y_true_error**2) * (y_true - y_predict)**2
+    return sum(x1)
+
+
+LSF_velocity = LSF(v, predict_velocity, v_uncertainty)
+LSF_CT = LSF(CdivT, predict_CT, CdivT_uncertainty)
+
+
+def goodness(lsf_value, N, nc=2):
+    """
+
+    :param lsf_value: Least Square Fit Value
+    :param N: Data Points
+    :param nc: Number of parameters (2 for this problem)
+    :return: The Goodness of the Fit
+    """
+
+    return lsf_value / (N - nc)
+
+
+goodness_velocity = goodness(LSF_velocity, len(v))
+goodness_CT = goodness(LSF_CT, len(CdivT))
+
+# Data Presentation
+print("Velocity LSF: ", LSF_velocity, "|    Velocity Goodness: ", goodness_velocity)
+print("C/T LSF: ", LSF_CT, "|    C/T Goodness: ", goodness_CT)
+print()
+print("velocity_aValue: ", a_velocity, "|    velocity_bValue: ", b_velocity)
+print("C/T_aValue: ", a_specificheat, "|    C/T_bValue: ", b_specificheat)
+print()
+print("velocity_aValue Error: ", a_velocity_error, "|    velocity_bValue Error: ", b_velocity_error)
+print("C/T_aValue Error: ", a_specificheat_error, "|    C/T_bValue Error : ", b_specificheat_error)
+
+plt.figure(1)
+plt.title("Velocity vs Time Plot: Exact and Estimated")
+plt.errorbar(t_pr, v, yerr=v_uncertainty/2, fmt='b.', label='Exact Data')
+plt.plot(t_pr, predict_velocity, 'r-', label='Predicted velocity')
+plt.xlabel('Time (seconds)')
+plt.ylabel('Velocity (meters/sec')
+plt.legend()
+plt.savefig('velocity_time.pdf')
+plt.show()
+
+
+plt.figure(2)
+plt.title("Heat Capacity of Copper: Measurements in the \n Adiabatic Demagnetisation of Cryostat")
+plt.errorbar(T_squared, CdivT, yerr=CdivT_uncertainty/2, fmt='b.', label='Exact Data')
+plt.plot(T_squared, predict_CT, 'r-', label='Predicted velocity')
+plt.xlabel('T^2 (kelvin^2)')
+plt.ylabel('C/T (mJ/(mol*kelvin)')
+plt.legend(loc='upper center')
+plt.savefig('heat_capacity.pdf')
+plt.show()
